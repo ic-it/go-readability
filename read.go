@@ -62,6 +62,7 @@ type Article struct {
 	Meta       Metadata
 	Content    string
 	RawContent string
+	Images     []string
 }
 
 // removeScripts removes script tags from the document.
@@ -1003,8 +1004,22 @@ func postProcessContent(articleContent *goquery.Selection, uri *nurl.URL) {
 
 }
 
-// getHTMLContent fetch and cleans the raw html from article
-func getHTMLContent(articleContent *goquery.Selection) string {
+// extractImageURIs export all image Absolute URIs
+func extractImageURIs(articleContent *goquery.Selection, base *nurl.URL) []string {
+	uris := make([]string, 0, 0)
+	articleContent.Find("img").Each(func(_ int, img *goquery.Selection) {
+		if src, exist := img.Attr("src"); exist {
+			absoluteURI := toAbsoluteURI(src, base)
+			img.SetAttr("src", absoluteURI)
+			uris = append(uris, absoluteURI)
+		}
+	})
+
+	return uris
+}
+
+// GetHTMLContent fetch and cleans the raw html from article
+func GetHTMLContent(articleContent *goquery.Selection) string {
 	html, err := articleContent.Html()
 	if err != nil {
 		return ""
@@ -1019,26 +1034,31 @@ func getHTMLContent(articleContent *goquery.Selection) string {
 	return html
 }
 
-// getTextContent fetch and cleans the text from article
-func getTextContent(articleContent *goquery.Selection) string {
+// GetTextContent fetch and cleans the text from article
+func GetTextContent(articleContent *goquery.Selection) string {
 	var buf bytes.Buffer
 
 	var f func(*html.Node)
 	br := html.UnescapeString("\n")
 	f = func(n *html.Node) {
 		if n.Type == html.TextNode {
-			text := n.Data
-			buf.WriteString(text)
-
+			buf.WriteString(n.Data)
 		} else if n.Data == "img" {
 			w := io.Writer(&buf)
 			buf.WriteString(br)
 			html.Render(w, n)
 			buf.WriteString(br)
+		} else if n.Data == "br" {
+			buf.WriteString(br)
 		}
+
 		if n.FirstChild != nil {
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				f(c)
+			}
+
+			if n.Data == "p" {
+				buf.WriteString(br)
 			}
 		}
 	}
@@ -1189,6 +1209,7 @@ func FromReader(reader io.Reader, url *nurl.URL) (Article, error) {
 
 	// Post process content
 	postProcessContent(articleContent, url)
+	images := extractImageURIs(articleContent, url)
 
 	// Estimate read time
 	minTime, maxTime := estimateReadTime(articleContent)
@@ -1207,15 +1228,16 @@ func FromReader(reader io.Reader, url *nurl.URL) (Article, error) {
 	}
 
 	// Get text and HTML from content
-	textContent := getTextContent(articleContent)
+	textContent := GetTextContent(articleContent)
 	// textContent := articleContent.Text()
-	htmlContent := getHTMLContent(articleContent)
+	htmlContent := GetHTMLContent(articleContent)
 
 	article := Article{
 		URL:        url.String(),
 		Meta:       metadata,
 		Content:    textContent,
 		RawContent: htmlContent,
+		Images:     images,
 	}
 
 	return article, nil
