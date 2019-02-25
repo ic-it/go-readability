@@ -7,7 +7,7 @@ matrix:
     - go: 1.9
 
 install:
-  - go get github.com/RadhiFadlillah/go-readability
+  - go get github.com/importcjj/go-readability
 
 script:
   - go get -t -v ./...

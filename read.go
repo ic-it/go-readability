@@ -16,7 +16,6 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	wl "github.com/abadojack/whatlanggo"
 	"golang.org/x/net/html"
-	"golang.org/x/net/html/atom"
 )
 
 var (
@@ -641,6 +640,7 @@ func prepArticle(articleContent *goquery.Selection, articleTitle string) {
 	// Clean out junk from the article content
 	cleanConditionally(articleContent, "form")
 	cleanConditionally(articleContent, "fieldset")
+
 	clean(articleContent, "h1")
 	clean(articleContent, "object")
 	clean(articleContent, "embed")
@@ -693,7 +693,7 @@ func prepArticle(articleContent *goquery.Selection, articleTitle string) {
 	// that will affect these
 	cleanConditionally(articleContent, "table")
 	cleanConditionally(articleContent, "ul")
-	cleanConditionally(articleContent, "div")
+	// cleanConditionally(articleContent, "div")
 
 	// Remove extra paragraphs
 	// At this point, nasty iframes have been removed, only remain embedded video ones.
@@ -742,7 +742,7 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 			}
 		}
 
-		// Remove unlikely candidates
+		// Remove unlikely candid+ates
 		if rxUnlikelyCandidates.MatchString(matchString) &&
 			!rxOkMaybeItsACandidate.MatchString(matchString) &&
 			!s.Is("body") && !s.Is("a") {
@@ -787,6 +787,7 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 	// A score is determined by things like number of commas, class names, etc. Maybe eventually link density.
 	candidates := make(map[string]candidateItem)
 	for _, s := range elementsToScore {
+
 		// If this paragraph is less than 25 characters, don't even count it.
 		innerText := normalizeText(s.Text())
 		if strLen(innerText) < 25 {
@@ -938,9 +939,10 @@ func toAbsoluteURI(uri string, base *nurl.URL) string {
 
 	// Otherwise, put it as path of base URL
 	newURI := nurl.URL(*base)
-	newURI.Path = uri
+	resourceURI, err := nurl.Parse(uri)
+	absolute := newURI.ResolveReference(resourceURI)
 
-	return newURI.String()
+	return absolute.String()
 }
 
 // Converts each <a> and <img> uri in the given element to an absolute URI,
@@ -972,15 +974,33 @@ func postProcessContent(articleContent *goquery.Selection, uri *nurl.URL) {
 
 	// Last time, clean all empty tags and remove id and class name
 	articleContent.Find("*").Each(func(_ int, s *goquery.Selection) {
-		html, _ := s.Html()
-		html = strings.TrimSpace(html)
-		if html == "" {
-			s.Remove()
+
+		var unuseAttrNames = map[string]struct{}{}
+		for _, a := range s.Get(0).Attr {
+			if a.Key == "src" || a.Key == "href" {
+				continue
+			}
+			unuseAttrNames[a.Key] = struct{}{}
 		}
 
-		s.RemoveAttr("class")
-		s.RemoveAttr("id")
+		// don't remove image
+		tagName := goquery.NodeName(s)
+		if tagName != "img" && tagName != "br" {
+			html, _ := s.Html()
+			html = strings.TrimSpace(html)
+			if html == "" {
+				s.Remove()
+			}
+		}
+
+		for attrName := range unuseAttrNames {
+			s.RemoveAttr(attrName)
+		}
+		// s.RemoveAttr("class")
+		// s.RemoveAttr("id")
+		// s.RemoveAttr("content")
 	})
+
 }
 
 // getHTMLContent fetch and cleans the raw html from article
@@ -989,6 +1009,8 @@ func getHTMLContent(articleContent *goquery.Selection) string {
 	if err != nil {
 		return ""
 	}
+
+	// return html
 
 	html = ghtml.UnescapeString(html)
 	html = rxComments.ReplaceAllString(html, "")
@@ -1002,16 +1024,18 @@ func getTextContent(articleContent *goquery.Selection) string {
 	var buf bytes.Buffer
 
 	var f func(*html.Node)
+	br := html.UnescapeString("\n")
 	f = func(n *html.Node) {
 		if n.Type == html.TextNode {
-			nodeText := normalizeText(n.Data)
-			if nodeText != "" {
-				buf.WriteString(nodeText)
-			}
-		} else if n.Parent != nil && n.Parent.DataAtom != atom.P {
-			buf.WriteString("|X|")
-		}
+			text := n.Data
+			buf.WriteString(text)
 
+		} else if n.Data == "img" {
+			w := io.Writer(&buf)
+			buf.WriteString(br)
+			html.Render(w, n)
+			buf.WriteString(br)
+		}
 		if n.FirstChild != nil {
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				f(c)
@@ -1023,16 +1047,7 @@ func getTextContent(articleContent *goquery.Selection) string {
 		f(n)
 	}
 
-	finalContent := ""
-	paragraphs := strings.Split(buf.String(), "|X|")
-	for _, paragraph := range paragraphs {
-		if paragraph != "" {
-			finalContent += paragraph + "\n\n"
-		}
-	}
-
-	finalContent = strings.TrimSpace(finalContent)
-	return finalContent
+	return buf.String()
 }
 
 // Estimate read time based on the language number of character in contents.
@@ -1142,6 +1157,15 @@ func FromURL(url *nurl.URL, timeout time.Duration) (Article, error) {
 	return FromReader(resp.Body, url)
 }
 
+type HTMLer interface {
+	Html() (string, error)
+}
+
+func printContentNumInHTML(htmler HTMLer, content string) {
+	html, _ := htmler.Html()
+	fmt.Println(len(strings.Split(html, content)))
+}
+
 // FromReader get readable content from the specified io.Reader
 func FromReader(reader io.Reader, url *nurl.URL) (Article, error) {
 	// Create goquery document
@@ -1156,7 +1180,9 @@ func FromReader(reader io.Reader, url *nurl.URL) (Article, error) {
 
 	// Get metadata and article
 	metadata := getArticleMetadata(doc)
+
 	articleContent, author := grabArticle(doc, metadata.Title)
+
 	if articleContent == nil {
 		return Article{}, fmt.Errorf("No article body detected")
 	}
@@ -1182,6 +1208,7 @@ func FromReader(reader io.Reader, url *nurl.URL) (Article, error) {
 
 	// Get text and HTML from content
 	textContent := getTextContent(articleContent)
+	// textContent := articleContent.Text()
 	htmlContent := getHTMLContent(articleContent)
 
 	article := Article{
