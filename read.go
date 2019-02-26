@@ -190,7 +190,7 @@ func getArticleTitle(doc *goquery.Document) string {
 }
 
 // getArticleMetadata attempts to get excerpt and byline metadata for the article.
-func getArticleMetadata(doc *goquery.Document) Metadata {
+func getArticleMetadata(doc *goquery.Document, base *nurl.URL) Metadata {
 	metadata := Metadata{}
 	mapAttribute := make(map[string]string)
 
@@ -238,8 +238,8 @@ func getArticleMetadata(doc *goquery.Document) Metadata {
 		metadata.Image = mapAttribute["twitter:image"]
 	}
 
-	if metadata.Image != "" && strings.HasPrefix(metadata.Image, "//") {
-		metadata.Image = "http:" + metadata.Image
+	if metadata.Image != "" {
+		metadata.Image = toAbsoluteURI(metadata.Image, base)
 	}
 
 	// Set final excerpt
@@ -1039,17 +1039,17 @@ func GetTextContent(articleContent *goquery.Selection) string {
 	var buf bytes.Buffer
 
 	var f func(*html.Node)
-	br := html.UnescapeString("\n")
+	linebreak := fmt.Sprintln()
 	f = func(n *html.Node) {
 		if n.Type == html.TextNode {
 			buf.WriteString(n.Data)
 		} else if n.Data == "img" {
 			w := io.Writer(&buf)
-			buf.WriteString(br)
+			buf.WriteString(linebreak)
 			html.Render(w, n)
-			buf.WriteString(br)
+			buf.WriteString(linebreak)
 		} else if n.Data == "br" {
-			buf.WriteString(br)
+			buf.WriteString(linebreak)
 		}
 
 		if n.FirstChild != nil {
@@ -1058,7 +1058,7 @@ func GetTextContent(articleContent *goquery.Selection) string {
 			}
 
 			if n.Data == "p" {
-				buf.WriteString(br)
+				buf.WriteString(linebreak)
 			}
 		}
 	}
@@ -1199,7 +1199,7 @@ func FromReader(reader io.Reader, url *nurl.URL) (Article, error) {
 	prepDocument(doc)
 
 	// Get metadata and article
-	metadata := getArticleMetadata(doc)
+	metadata := getArticleMetadata(doc, url)
 
 	articleContent, author := grabArticle(doc, metadata.Title)
 
