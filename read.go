@@ -33,6 +33,7 @@ var (
 	rxVideos               = regexp.MustCompile(`(?is)//(www\.)?(dailymotion|youtube|youtube-nocookie|player\.vimeo)\.com`)
 	rxKillBreaks           = regexp.MustCompile(`(?is)(<br\s*/?>(\s|&nbsp;?)*)+`)
 	rxComments             = regexp.MustCompile(`(?is)<!--[^>]+-->`)
+	rxlinebreak            = regexp.MustCompile(`\\r\\n`)
 )
 
 type candidateItem struct {
@@ -58,11 +59,11 @@ type Metadata struct {
 
 // Article is the content of an URL
 type Article struct {
-	URL        string
-	Meta       Metadata
-	Content    string
-	RawContent string
-	Images     []string
+	URL    string
+	Meta   Metadata
+	Text   string
+	HTML   string
+	Images []string
 }
 
 // removeScripts removes script tags from the document.
@@ -82,6 +83,7 @@ func replaceBrs(doc *goquery.Document) {
 
 	html, _ := body.Html()
 	html = rxReplaceBrs.ReplaceAllString(html, "</p><p>")
+	// html = rxlinebreak.ReplaceAllString(html, "</p><p>")
 
 	body.SetHtml(html)
 
@@ -694,7 +696,7 @@ func prepArticle(articleContent *goquery.Selection, articleTitle string) {
 	// that will affect these
 	cleanConditionally(articleContent, "table")
 	cleanConditionally(articleContent, "ul")
-	// cleanConditionally(articleContent, "div")
+	cleanConditionally(articleContent, "div")
 
 	// Remove extra paragraphs
 	// At this point, nasty iframes have been removed, only remain embedded video ones.
@@ -984,7 +986,7 @@ func postProcessContent(articleContent *goquery.Selection, uri *nurl.URL) {
 			unuseAttrNames[a.Key] = struct{}{}
 		}
 
-		// don't remove image
+		// don't remove image and br
 		tagName := goquery.NodeName(s)
 		if tagName != "img" && tagName != "br" {
 			html, _ := s.Html()
@@ -997,9 +999,6 @@ func postProcessContent(articleContent *goquery.Selection, uri *nurl.URL) {
 		for attrName := range unuseAttrNames {
 			s.RemoveAttr(attrName)
 		}
-		// s.RemoveAttr("class")
-		// s.RemoveAttr("id")
-		// s.RemoveAttr("content")
 	})
 
 }
@@ -1035,15 +1034,18 @@ func GetHTMLContent(articleContent *goquery.Selection) string {
 }
 
 // GetTextContent fetch and cleans the text from article
-func GetTextContent(articleContent *goquery.Selection) string {
+func GetTextContent(articleContent *goquery.Selection, linebreak string, withImgTag bool) string {
 	var buf bytes.Buffer
 
 	var f func(*html.Node)
-	linebreak := fmt.Sprintln()
+	if len(linebreak) == 0 {
+		linebreak = fmt.Sprintln()
+	}
 	f = func(n *html.Node) {
+
 		if n.Type == html.TextNode {
 			buf.WriteString(n.Data)
-		} else if n.Data == "img" {
+		} else if n.Data == "img" && withImgTag {
 			w := io.Writer(&buf)
 			buf.WriteString(linebreak)
 			html.Render(w, n)
@@ -1057,7 +1059,16 @@ func GetTextContent(articleContent *goquery.Selection) string {
 				f(c)
 			}
 
-			if n.Data == "p" {
+			// Fix line break
+			if n.Data == "p" ||
+				n.Data == "h1" ||
+				n.Data == "h2" ||
+				n.Data == "h3" ||
+				n.Data == "h4" ||
+				n.Data == "h5" ||
+				n.Data == "pre" ||
+				n.Data == "h6" {
+
 				buf.WriteString(linebreak)
 			}
 		}
@@ -1153,8 +1164,29 @@ func estimateReadTime(articleContent *goquery.Selection) (int, int) {
 	return int(minReadTime), int(maxReadTime)
 }
 
+type htmler interface {
+	Html() (string, error)
+}
+
+func printContentNumInHTML(htmler htmler, content string) {
+	html, _ := htmler.Html()
+	fmt.Println(len(strings.Split(html, content)))
+}
+
+// Extractor ...
+type Extractor struct {
+	TextLineBreak  string
+	TextWithImgTag bool
+}
+
+// DefaultExtrator ...
+var DefaultExtrator = &Extractor{
+	TextLineBreak:  fmt.Sprintln(),
+	TextWithImgTag: false,
+}
+
 // FromURL get readable content from the specified URL
-func FromURL(url *nurl.URL, timeout time.Duration) (Article, error) {
+func (extractor *Extractor) FromURL(url *nurl.URL, timeout time.Duration) (Article, error) {
 	// Fetch page from URL
 	client := &http.Client{Timeout: timeout}
 	resp, err := client.Get(url.String())
@@ -1174,20 +1206,11 @@ func FromURL(url *nurl.URL, timeout time.Duration) (Article, error) {
 	}
 
 	// Parse response body
-	return FromReader(resp.Body, url)
-}
-
-type HTMLer interface {
-	Html() (string, error)
-}
-
-func printContentNumInHTML(htmler HTMLer, content string) {
-	html, _ := htmler.Html()
-	fmt.Println(len(strings.Split(html, content)))
+	return extractor.FromReader(resp.Body, url)
 }
 
 // FromReader get readable content from the specified io.Reader
-func FromReader(reader io.Reader, url *nurl.URL) (Article, error) {
+func (extractor *Extractor) FromReader(reader io.Reader, url *nurl.URL) (Article, error) {
 	// Create goquery document
 	doc, err := goquery.NewDocumentFromReader(reader)
 	if err != nil {
@@ -1228,17 +1251,27 @@ func FromReader(reader io.Reader, url *nurl.URL) (Article, error) {
 	}
 
 	// Get text and HTML from content
-	textContent := GetTextContent(articleContent)
+	textContent := GetTextContent(articleContent, extractor.TextLineBreak, extractor.TextWithImgTag)
 	// textContent := articleContent.Text()
 	htmlContent := GetHTMLContent(articleContent)
 
 	article := Article{
-		URL:        url.String(),
-		Meta:       metadata,
-		Content:    textContent,
-		RawContent: htmlContent,
-		Images:     images,
+		URL:    url.String(),
+		Meta:   metadata,
+		Text:   textContent,
+		HTML:   htmlContent,
+		Images: images,
 	}
 
 	return article, nil
+}
+
+// FromReader get readable content from the specified io.Reader
+func FromReader(reader io.Reader, url *nurl.URL) (Article, error) {
+	return DefaultExtrator.FromReader(reader, url)
+}
+
+// FromURL get readable content from the specified URL
+func FromURL(url *nurl.URL, timeout time.Duration) (Article, error) {
+	return DefaultExtrator.FromURL(url, timeout)
 }
