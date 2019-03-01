@@ -27,7 +27,7 @@ var (
 	rxOkMaybeItsACandidate = regexp.MustCompile(`(?is)and|article|body|column|main|shadow`)
 	rxUnlikelyElements     = regexp.MustCompile(`(?is)(input|time|button)`)
 	rxDivToPElements       = regexp.MustCompile(`(?is)<(a|blockquote|dl|div|img|ol|p|pre|table|ul|select)`)
-	rxPositive             = regexp.MustCompile(`(?is)article|body|content|entry|hentry|h-entry|main|page|pagination|post|text|blog|story`)
+	rxPositive             = regexp.MustCompile(`(?is)article|body|content|entry|hentry|h-entry|main|page|pagination|post|text|blog|story|paragraph`)
 	rxNegative             = regexp.MustCompile(`(?is)hidden|^hid$| hid$| hid |^hid |banner|combx|comment|com-|contact|foot|footer|footnote|masthead|media|meta|outbrain|promo|related|scroll|share|shoutbox|sidebar|skyscraper|sponsor|shopping|tags|tool|widget`)
 	rxPIsSentence          = regexp.MustCompile(`(?is)\.( |$)`)
 	rxVideos               = regexp.MustCompile(`(?is)//(www\.)?(dailymotion|youtube|youtube-nocookie|player\.vimeo)\.com`)
@@ -384,9 +384,9 @@ func getClassWeight(node *goquery.Selection) float64 {
 	}
 
 	if str, b := node.Attr("id"); b {
-		if rxNegative.MatchString(str) {
-			weight -= 25
-		}
+		// if rxNegative.MatchString(str) {
+		// 	weight -= 25
+		// }
 
 		if rxPositive.MatchString(str) {
 			weight += 25
