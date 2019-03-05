@@ -23,7 +23,7 @@ var (
 	rxSpaces               = regexp.MustCompile(`(?is)\s{2,}|\n+`)
 	rxReplaceBrs           = regexp.MustCompile(`(?is)(<br[^>]*>[ \n\r\t]*){2,}`)
 	rxByline               = regexp.MustCompile(`(?is)byline|author|dateline|writtenby|p-author`)
-	rxUnlikelyCandidates   = regexp.MustCompile(`(?is)banner|breadcrumbs|combx|comment|community|cover-wrap|disqus|extra|foot|header|legends|menu|related|remark|replies|rss|shoutbox|sidebar|skyscraper|social|sponsor|supplemental|ad-break|agegate|pagination|pager|popup|yom-remote`)
+	rxUnlikelyCandidates   = regexp.MustCompile(`(?is)banner|breadcrumbs|combx|comment|community|cover-wrap|disqus|extra|foot|header|legends|menu|related|remark|replies|rss|shoutbox|sidebar|skyscraper|social|sponsor|supplemental|ad-break|agegate|pagination|pager|popup|yom-remote|subscribe`)
 	rxOkMaybeItsACandidate = regexp.MustCompile(`(?is)and|article|body|column|main|shadow`)
 	rxUnlikelyElements     = regexp.MustCompile(`(?is)(input|time|button)`)
 	rxDivToPElements       = regexp.MustCompile(`(?is)<(a|blockquote|dl|div|img|ol|p|pre|table|ul|select)`)
@@ -352,7 +352,7 @@ func initializeNodeScore(node *goquery.Selection) candidateItem {
 	tagName := goquery.NodeName(node)
 	switch strings.ToLower(tagName) {
 	case "article":
-		contentScore += 10
+		contentScore += 20
 	case "section":
 		contentScore += 8
 	case "div":
@@ -374,6 +374,7 @@ func initializeNodeScore(node *goquery.Selection) candidateItem {
 func getClassWeight(node *goquery.Selection) float64 {
 	weight := 0.0
 	if str, b := node.Attr("class"); b {
+		str = strings.ToLower(str)
 		if rxNegative.MatchString(str) {
 			weight -= 25
 		}
@@ -384,6 +385,7 @@ func getClassWeight(node *goquery.Selection) float64 {
 	}
 
 	if str, b := node.Attr("id"); b {
+		str = strings.ToLower(str)
 		// if rxNegative.MatchString(str) {
 		// 	weight -= 25
 		// }
@@ -653,6 +655,7 @@ func prepArticle(articleContent *goquery.Selection, articleTitle string) {
 	// Clean out elements have "share" in their id/class combinations from final top candidates,
 	// which means we don't remove the top candidates even they have "share".
 	articleContent.Find("*").Each(func(_ int, s *goquery.Selection) {
+
 		id, _ := s.Attr("id")
 		class, _ := s.Attr("class")
 		matchString := class + " " + id
@@ -696,7 +699,9 @@ func prepArticle(articleContent *goquery.Selection, articleTitle string) {
 	// that will affect these
 	cleanConditionally(articleContent, "table")
 	cleanConditionally(articleContent, "ul")
-	cleanConditionally(articleContent, "div")
+
+	// TODO: some bugs
+	// cleanConditionally(articleContent, "div")
 
 	// Remove extra paragraphs
 	// At this point, nasty iframes have been removed, only remain embedded video ones.
@@ -732,8 +737,7 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 	// class name "comment", etc), and turn divs into P tags where they have been
 	// used inappropriately (as in, where they contain no other block level elements.)
 	doc.Find("*").Each(func(i int, s *goquery.Selection) {
-		matchString := s.AttrOr("class", "") + " " + s.AttrOr("id", "")
-
+		matchString := strings.ToLower(s.AttrOr("class", "") + " " + s.AttrOr("id", ""))
 		// If byline, remove this element
 		if rel := s.AttrOr("rel", ""); rel == "author" || rxByline.MatchString(matchString) {
 			text := s.Text()
@@ -748,8 +752,12 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 		// Remove unlikely candid+ates
 		if rxUnlikelyCandidates.MatchString(matchString) &&
 			!rxOkMaybeItsACandidate.MatchString(matchString) &&
-			!s.Is("body") && !s.Is("a") &&
-			getClassWeight(s) <= 0 {
+			!s.Is("body") && !s.Is("a") && getClassWeight(s) <= 0 {
+			s.Remove()
+			return
+		}
+
+		if rxUnlikelyElements.MatchString(matchString) {
 			s.Remove()
 			return
 		}
@@ -764,6 +772,9 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 			s.Remove()
 			return
 		}
+	})
+
+	doc.Find("*").Each(func(i int, s *goquery.Selection) {
 
 		if s.Is("section,h2,h3,h4,h5,h6,p,td,pre") {
 			elementsToScore = append(elementsToScore, s)
@@ -791,7 +802,6 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 	// A score is determined by things like number of commas, class names, etc. Maybe eventually link density.
 	candidates := make(map[string]candidateItem)
 	for _, s := range elementsToScore {
-
 		// If this paragraph is less than 25 characters, don't even count it.
 		innerText := normalizeText(s.Text())
 		if strLen(innerText) < 25 {
