@@ -748,7 +748,8 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 		// Remove unlikely candid+ates
 		if rxUnlikelyCandidates.MatchString(matchString) &&
 			!rxOkMaybeItsACandidate.MatchString(matchString) &&
-			!s.Is("body") && !s.Is("a") {
+			!s.Is("body") && !s.Is("a") &&
+			getClassWeight(s) <= 0 {
 			s.Remove()
 			return
 		}
