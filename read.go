@@ -999,10 +999,11 @@ func postProcessContent(articleContent *goquery.Selection, uri *nurl.URL) {
 
 		// don't remove image and br
 		tagName := goquery.NodeName(s)
-		if tagName != "img" && tagName != "br" {
-			html, _ := s.Html()
-			html = strings.TrimSpace(html)
-			if html == "" {
+		// fmt.Println(tagName, s.Has("img").Length())
+		// remove empty node, and keep img and br tag
+		if tagName != "img" && tagName != "br" && s.Has("img").Length() == 0 {
+			text := strings.TrimSpace(s.Text())
+			if text == "" {
 				s.Remove()
 			}
 		}
@@ -1055,7 +1056,7 @@ func GetTextContent(articleContent *goquery.Selection, linebreak string, withImg
 	f = func(n *html.Node) {
 
 		if n.Type == html.TextNode {
-			buf.WriteString(n.Data)
+			buf.WriteString(strings.TrimSpace(n.Data))
 		} else if n.Data == "img" && withImgTag {
 			w := io.Writer(&buf)
 			buf.WriteString(linebreak)
