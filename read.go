@@ -1056,7 +1056,9 @@ func GetTextContent(articleContent *goquery.Selection, linebreak string, withImg
 	f = func(n *html.Node) {
 
 		if n.Type == html.TextNode {
-			buf.WriteString(strings.TrimSpace(n.Data))
+			text := n.Data
+			text = strings.TrimLeft(text, " ")
+			buf.WriteString(text)
 		} else if n.Data == "img" && withImgTag {
 			w := io.Writer(&buf)
 			buf.WriteString(linebreak)
@@ -1079,6 +1081,7 @@ func GetTextContent(articleContent *goquery.Selection, linebreak string, withImg
 				n.Data == "h4" ||
 				n.Data == "h5" ||
 				n.Data == "pre" ||
+				n.Data == "div" ||
 				n.Data == "h6" {
 
 				buf.WriteString(linebreak)
