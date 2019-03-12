@@ -1067,11 +1067,17 @@ func GetTextContent(articleContent *goquery.Selection, linebreak string, withImg
 			buf.WriteString(linebreak)
 		} else if n.Data == "br" {
 			buf.WriteString(linebreak)
+		} else if n.Data == "li" {
+			buf.WriteString("<li>")
 		}
 
 		if n.FirstChild != nil {
 			for c := n.FirstChild; c != nil; c = c.NextSibling {
 				f(c)
+			}
+
+			if n.Data == "li" {
+				buf.WriteString("</li>")
 			}
 
 			// Fix line break
@@ -1081,12 +1087,13 @@ func GetTextContent(articleContent *goquery.Selection, linebreak string, withImg
 				n.Data == "h3" ||
 				n.Data == "h4" ||
 				n.Data == "h5" ||
+				n.Data == "h6" ||
 				n.Data == "pre" ||
-				n.Data == "div" ||
-				n.Data == "h6" {
+				n.Data == "div" {
 
 				buf.WriteString(linebreak)
 			}
+
 		}
 	}
 
