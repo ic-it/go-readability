@@ -25,7 +25,7 @@ var (
 	rxByline               = regexp.MustCompile(`(?is)byline|author|dateline|writtenby|p-author`)
 	rxUnlikelyCandidates   = regexp.MustCompile(`(?is)banner|breadcrumbs|combx|comment|community|cover-wrap|disqus|extra|foot|header|legends|menu|related|remark|replies|rss|shoutbox|sidebar|skyscraper|social|sponsor|supplemental|ad-break|agegate|pagination|pager|popup|yom-remote|subscribe`)
 	rxOkMaybeItsACandidate = regexp.MustCompile(`(?is)and|article|body|column|main|shadow`)
-	rxUnlikelyElements     = regexp.MustCompile(`(?is)(input|time|button)`)
+	rxUnlikelyElements     = regexp.MustCompile(`(?is)(input|time|button|svg)`)
 	rxDivToPElements       = regexp.MustCompile(`(?is)<(a|blockquote|dl|div|img|ol|p|pre|table|ul|select)`)
 	rxPositive             = regexp.MustCompile(`(?is)article|body|content|entry|hentry|h-entry|main|page|pagination|post|text|blog|story|paragraph`)
 	rxNegative             = regexp.MustCompile(`(?is)hidden|^hid$| hid$| hid |^hid |banner|combx|comment|com-|contact|foot|footer|footnote|masthead|media|meta|outbrain|promo|related|scroll|share|shoutbox|sidebar|skyscraper|sponsor|shopping|tags|tool|widget`)
@@ -601,6 +601,7 @@ func clean(s *goquery.Selection, tag string) {
 	isEmbed := tag == "object" || tag == "embed" || tag == "iframe"
 
 	s.Find(tag).Each(func(i int, target *goquery.Selection) {
+
 		attributeValues := ""
 		for _, attribute := range target.Nodes[0].Attr {
 			attributeValues += " " + attribute.Val
@@ -737,6 +738,7 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 	// class name "comment", etc), and turn divs into P tags where they have been
 	// used inappropriately (as in, where they contain no other block level elements.)
 	doc.Find("*").Each(func(i int, s *goquery.Selection) {
+		tagName := goquery.NodeName(s)
 		matchString := strings.ToLower(s.AttrOr("class", "") + " " + s.AttrOr("id", ""))
 		// If byline, remove this element
 		if rel := s.AttrOr("rel", ""); rel == "author" || rxByline.MatchString(matchString) {
@@ -758,12 +760,18 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 			return
 		}
 
+		if rxUnlikelyCandidates.MatchString(tagName) {
+			s.Remove()
+			return
+		}
+
 		if rxUnlikelyElements.MatchString(matchString) {
 			s.Remove()
 			return
 		}
 
-		if rxUnlikelyElements.MatchString(goquery.NodeName(s)) {
+		if rxUnlikelyElements.MatchString(tagName) {
+			fmt.Println(tagName)
 			s.Remove()
 			return
 		}
@@ -1058,7 +1066,7 @@ func GetTextContent(articleContent *goquery.Selection, linebreak string, withImg
 
 		if n.Type == html.TextNode {
 			text := n.Data
-			text = strings.TrimLeft(text, " ")
+			text = rxSpaces.ReplaceAllString(text, " ")
 			buf.WriteString(text)
 		} else if n.Data == "img" && withImgTag {
 			w := io.Writer(&buf)
