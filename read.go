@@ -373,25 +373,26 @@ func initializeNodeScore(node *goquery.Selection) candidateItem {
 // Uses regular expressions to tell if this element looks good or bad.
 func getClassWeight(node *goquery.Selection) float64 {
 	weight := 0.0
+	score := 45.0
 	if str, b := node.Attr("class"); b {
 		str = strings.ToLower(str)
 		if rxNegative.MatchString(str) {
-			weight -= 25
+			weight -= score
 		}
 
 		if rxPositive.MatchString(str) {
-			weight += 25
+			weight += score
 		}
 	}
 
 	if str, b := node.Attr("id"); b {
 		str = strings.ToLower(str)
 		// if rxNegative.MatchString(str) {
-		// 	weight -= 25
+		// 	weight -= score
 		// }
 
 		if rxPositive.MatchString(str) {
-			weight += 25
+			weight += score
 		}
 	}
 
@@ -771,7 +772,6 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 		}
 
 		if rxUnlikelyElements.MatchString(tagName) {
-			fmt.Println(tagName)
 			s.Remove()
 			return
 		}
@@ -791,6 +791,9 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 
 		// Turn all divs that don't have children block level elements into p's
 		if s.Is("div") {
+			// fmt.Println(hasSinglePInsideElement(s))
+			// fmt.Println(!hasChildBlockElement(s))
+
 			// Sites like http://mobile.slate.com encloses each paragraph with a DIV
 			// element. DIVs with only a P element inside and no text content can be
 			// safely converted into plain P elements to avoid confusing the scoring
@@ -800,6 +803,7 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 				s.ReplaceWithSelection(newNode)
 				elementsToScore = append(elementsToScore, s)
 			} else if !hasChildBlockElement(s) {
+
 				setNodeTag(s, "p")
 				elementsToScore = append(elementsToScore, s)
 			}
@@ -836,6 +840,7 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 
 		// Initialize and score ancestors.
 		for level, ancestor := range ancestors {
+			// debugPrintHTML(ancestor)
 			// Node score divider:
 			// - parent:             1 (no division)
 			// - grandparent:        2
@@ -1075,6 +1080,7 @@ func GetTextContent(articleContent *goquery.Selection, linebreak string, withImg
 			buf.WriteString(linebreak)
 		} else if n.Data == "br" {
 			buf.WriteString(linebreak)
+			// }
 		} else if n.Data == "li" {
 			buf.WriteString("<li>")
 		}
@@ -1097,6 +1103,7 @@ func GetTextContent(articleContent *goquery.Selection, linebreak string, withImg
 				n.Data == "h5" ||
 				n.Data == "h6" ||
 				n.Data == "pre" ||
+				n.Data == "li" ||
 				n.Data == "div" {
 
 				buf.WriteString(linebreak)
@@ -1199,9 +1206,15 @@ type htmler interface {
 	Html() (string, error)
 }
 
-func printContentNumInHTML(htmler htmler, content string) {
+func debugPrintContentNumInHTML(htmler htmler, content string) {
 	html, _ := htmler.Html()
 	fmt.Println(len(strings.Split(html, content)))
+}
+
+func debugPrintHTML(htmler htmler) {
+	h, _ := htmler.Html()
+	fmt.Println(h)
+	fmt.Println("~~~~~~~~")
 }
 
 // Extractor ...
