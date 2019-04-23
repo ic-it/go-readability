@@ -741,6 +741,7 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 	doc.Find("*").Each(func(i int, s *goquery.Selection) {
 		tagName := goquery.NodeName(s)
 		matchString := strings.ToLower(s.AttrOr("class", "") + " " + s.AttrOr("id", ""))
+
 		// If byline, remove this element
 		if rel := s.AttrOr("rel", ""); rel == "author" || rxByline.MatchString(matchString) {
 			text := s.Text()
@@ -755,7 +756,7 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 		// Remove unlikely candid+ates
 		if rxUnlikelyCandidates.MatchString(matchString) &&
 			!rxOkMaybeItsACandidate.MatchString(matchString) &&
-			!s.Is("article") && !s.Is("body") && !s.Is("a") &&
+			!s.Is("html") && !s.Is("article") && !s.Is("body") && !s.Is("a") &&
 			getClassWeight(s) <= 0 {
 			s.Remove()
 			return
@@ -968,6 +969,9 @@ func toAbsoluteURI(uri string, base *nurl.URL) string {
 	// Otherwise, put it as path of base URL
 	newURI := nurl.URL(*base)
 	resourceURI, err := nurl.Parse(uri)
+	if err != nil {
+		return uri
+	}
 	absolute := newURI.ResolveReference(resourceURI)
 
 	return absolute.String()
@@ -991,6 +995,8 @@ func fixRelativeURIs(articleContent *goquery.Selection, base *nurl.URL) {
 
 	articleContent.Find("img").Each(func(_ int, img *goquery.Selection) {
 		if src, exist := img.Attr("src"); exist {
+			img.SetAttr("src", toAbsoluteURI(src, base))
+		} else if src, exist := img.Attr("data-src"); exist {
 			img.SetAttr("src", toAbsoluteURI(src, base))
 		}
 	})
@@ -1059,30 +1065,111 @@ func GetHTMLContent(articleContent *goquery.Selection) string {
 	return html
 }
 
+var LINEREAK = fmt.Sprintln()
+
+type tagTextRenderer struct {
+	Before RenderFunc
+	After  RenderFunc
+}
+
+type RenderFunc func(node *html.Node, buf *bytes.Buffer)
+
+type TextRenderers struct {
+	LineBreak string
+	renders   map[string]*tagTextRenderer
+}
+
+func NewTextRenderers(lineBreak string) *TextRenderers {
+	return &TextRenderers{
+		LineBreak: lineBreak,
+		renders:   make(map[string]*tagTextRenderer),
+	}
+}
+
+func (r *TextRenderers) beforeRender(node *html.Node, buf *bytes.Buffer) {
+	renderer, ok := r.renders[node.Data]
+	if ok {
+		renderer.Before(node, buf)
+	}
+}
+
+func (r *TextRenderers) afterRender(node *html.Node, buf *bytes.Buffer) {
+	renderer, ok := r.renders[node.Data]
+	if ok {
+		renderer.After(node, buf)
+	}
+}
+
+func (r *TextRenderers) WriteLineBreak(buf *bytes.Buffer) {
+	buf.WriteString(r.LineBreak)
+}
+
+func (r *TextRenderers) Register(tag string, before, after RenderFunc) error {
+	r.renders[tag] = &tagTextRenderer{
+		Before: before,
+		After:  after,
+	}
+
+	return nil
+}
+
+func NewNoobTextRenderers(lineBreak string) *TextRenderers {
+	render := NewTextRenderers(lineBreak)
+	render.Register("li",
+		func(n *html.Node, buf *bytes.Buffer) {
+			buf.WriteString("<li>")
+		}, func(n *html.Node, buf *bytes.Buffer) {
+			buf.WriteString("</li>")
+		})
+
+	render.Register("img",
+		func(n *html.Node, buf *bytes.Buffer) {
+			w := io.Writer(buf)
+			render.WriteLineBreak(buf)
+			html.Render(w, n)
+			render.WriteLineBreak(buf)
+		}, nil)
+
+	render.Register("br",
+		func(n *html.Node, buf *bytes.Buffer) {
+			render.WriteLineBreak(buf)
+		}, nil)
+
+	render.Register("h1",
+		func(n *html.Node, buf *bytes.Buffer) {
+			buf.WriteString("<h1>")
+		},
+		func(n *html.Node, buf *bytes.Buffer) {
+			buf.WriteString("</h1>")
+		})
+	render.Register("h2",
+		func(n *html.Node, buf *bytes.Buffer) {
+			buf.WriteString("<h2>")
+		},
+		func(n *html.Node, buf *bytes.Buffer) {
+			buf.WriteString("</h2>")
+		})
+	render.Register("h3",
+		func(n *html.Node, buf *bytes.Buffer) {
+			buf.WriteString("<h3>")
+		},
+		func(n *html.Node, buf *bytes.Buffer) {
+			buf.WriteString("</h3>")
+		})
+
+	return render
+}
+
 // GetTextContent fetch and cleans the text from article
-func GetTextContent(articleContent *goquery.Selection, linebreak string, withImgTag bool) string {
+func GetTextContent(articleContent *goquery.Selection, customRender *TextRenderers) string {
 	var buf bytes.Buffer
 
 	var f func(*html.Node)
-	if len(linebreak) == 0 {
-		linebreak = fmt.Sprintln()
-	}
 	f = func(n *html.Node) {
-
 		if n.Type == html.TextNode {
-			text := n.Data
-			text = rxSpaces.ReplaceAllString(text, " ")
-			buf.WriteString(text)
-		} else if n.Data == "img" && withImgTag {
-			w := io.Writer(&buf)
-			buf.WriteString(linebreak)
-			html.Render(w, n)
-			buf.WriteString(linebreak)
-		} else if n.Data == "br" {
-			buf.WriteString(linebreak)
-			// }
-		} else if n.Data == "li" {
-			buf.WriteString("<li>")
+			buf.WriteString(rxSpaces.ReplaceAllString(n.Data, " "))
+		} else if customRender != nil {
+			customRender.beforeRender(n, &buf)
 		}
 
 		if n.FirstChild != nil {
@@ -1090,8 +1177,8 @@ func GetTextContent(articleContent *goquery.Selection, linebreak string, withImg
 				f(c)
 			}
 
-			if n.Data == "li" {
-				buf.WriteString("</li>")
+			if customRender != nil {
+				customRender.afterRender(n, &buf)
 			}
 
 			// Fix line break
@@ -1105,8 +1192,9 @@ func GetTextContent(articleContent *goquery.Selection, linebreak string, withImg
 				n.Data == "pre" ||
 				n.Data == "li" ||
 				n.Data == "div" {
-
-				buf.WriteString(linebreak)
+				if customRender != nil {
+					customRender.WriteLineBreak(&buf)
+				}
 			}
 
 		}
@@ -1219,14 +1307,13 @@ func debugPrintHTML(htmler htmler) {
 
 // Extractor ...
 type Extractor struct {
-	TextLineBreak  string
-	TextWithImgTag bool
+	TextLineBreak       string
+	CustomTextRenderers *TextRenderers
 }
 
 // DefaultExtrator ...
 var DefaultExtrator = &Extractor{
-	TextLineBreak:  fmt.Sprintln(),
-	TextWithImgTag: false,
+	TextLineBreak: fmt.Sprintln(),
 }
 
 // FromURL get readable content from the specified URL
@@ -1251,6 +1338,11 @@ func (extractor *Extractor) FromURL(url *nurl.URL, timeout time.Duration) (Artic
 
 	// Parse response body
 	return extractor.FromReader(resp.Body, url)
+}
+
+func CleanDoc(doc *goquery.Document) {
+	removeScripts(doc)
+	prepDocument(doc)
 }
 
 // FromReader get readable content from the specified io.Reader
@@ -1295,7 +1387,7 @@ func (extractor *Extractor) FromReader(reader io.Reader, url *nurl.URL) (Article
 	}
 
 	// Get text and HTML from content
-	textContent := GetTextContent(articleContent, extractor.TextLineBreak, extractor.TextWithImgTag)
+	textContent := GetTextContent(articleContent, extractor.CustomTextRenderers)
 	// textContent := articleContent.Text()
 	htmlContent := GetHTMLContent(articleContent)
 
