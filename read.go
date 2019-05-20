@@ -786,7 +786,7 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 
 	doc.Find("*").Each(func(i int, s *goquery.Selection) {
 
-		if s.Is("section,h2,h3,h4,h5,h6,p,td,pre") {
+		if s.Is("section,h2,h3,h4,h5,h6,p,td,pre,article") {
 			elementsToScore = append(elementsToScore, s)
 		}
 
@@ -841,7 +841,7 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 
 		// Initialize and score ancestors.
 		for level, ancestor := range ancestors {
-			// debugPrintHTML(ancestor)
+
 			// Node score divider:
 			// - parent:             1 (no division)
 			// - grandparent:        2
