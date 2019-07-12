@@ -26,6 +26,7 @@ var (
 	rxUnlikelyCandidates   = regexp.MustCompile(`(?is)banner|breadcrumbs|combx|comment|community|cover-wrap|disqus|extra|foot|header|legends|menu|related|remark|replies|rss|shoutbox|sidebar|skyscraper|social|sponsor|supplemental|ad-break|agegate|pagination|pager|popup|yom-remote|subscribe`)
 	rxOkMaybeItsACandidate = regexp.MustCompile(`(?is)and|article|body|column|main|shadow`)
 	rxUnlikelyElements     = regexp.MustCompile(`(?is)(input|time|button|svg)`)
+	rxlikelyElements       = regexp.MustCompile(`(?is)(no-svg)`)
 	rxDivToPElements       = regexp.MustCompile(`(?is)<(a|blockquote|dl|div|img|ol|p|pre|table|ul|select)`)
 	rxPositive             = regexp.MustCompile(`(?is)article|body|content|entry|hentry|h-entry|main|page|pagination|post|text|blog|story|paragraph`)
 	rxNegative             = regexp.MustCompile(`(?is)hidden|^hid$| hid$| hid |^hid |banner|combx|comment|com-|contact|foot|footer|footnote|masthead|media|meta|outbrain|promo|related|scroll|share|shoutbox|sidebar|skyscraper|sponsor|shopping|tags|tool|widget`)
@@ -767,7 +768,7 @@ func grabArticle(doc *goquery.Document, articleTitle string) (*goquery.Selection
 			return
 		}
 
-		if rxUnlikelyElements.MatchString(matchString) {
+		if rxUnlikelyElements.MatchString(matchString) && !rxlikelyElements.MatchString(matchString) {
 			s.Remove()
 			return
 		}
@@ -1301,7 +1302,14 @@ func debugPrintContentNumInHTML(htmler htmler, content string) {
 
 func debugPrintHTML(htmler htmler) {
 	h, _ := htmler.Html()
-	fmt.Println(h)
+	length := len(h)
+	if length > 300 {
+		fmt.Println(h[:100])
+		fmt.Println("...")
+		fmt.Println(h[len(h)-100:])
+	} else {
+		fmt.Println(h)
+	}
 	fmt.Println("~~~~~~~~")
 }
 
