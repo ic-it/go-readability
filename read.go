@@ -1353,6 +1353,37 @@ func CleanDoc(doc *goquery.Document) {
 	prepDocument(doc)
 }
 
+func grabArticleWithSelector(doc *goquery.Document, selector string) (*goquery.Selection, string) {
+	return doc.Find(selector), ""
+}
+
+func (extractor *Extractor) FromReaderWithSelector(reader io.Reader, selector string, url *nurl.URL) (Article, error) {
+	// Create goquery document
+	doc, err := goquery.NewDocumentFromReader(reader)
+	if err != nil {
+		return Article{}, err
+	}
+
+	// Prepare document
+	removeScripts(doc)
+	prepDocument(doc)
+
+	// Get metadata and article
+	metadata := getArticleMetadata(doc, url)
+
+	articleContent, author := grabArticleWithSelector(doc, selector)
+
+	if articleContent == nil {
+		return Article{}, fmt.Errorf("No article body find, check the selector")
+	}
+	// Update author data in metadata
+	if author != "" {
+		metadata.Author = author
+	}
+
+	return extractor.parseArticle(metadata, articleContent, url)
+}
+
 // FromReader get readable content from the specified io.Reader
 func (extractor *Extractor) FromReader(reader io.Reader, url *nurl.URL) (Article, error) {
 	// Create goquery document
@@ -1373,7 +1404,15 @@ func (extractor *Extractor) FromReader(reader io.Reader, url *nurl.URL) (Article
 	if articleContent == nil {
 		return Article{}, fmt.Errorf("No article body detected")
 	}
+	// Update author data in metadata
+	if author != "" {
+		metadata.Author = author
+	}
 
+	return extractor.parseArticle(metadata, articleContent, url)
+}
+
+func (extractor *Extractor) parseArticle(metadata Metadata, articleContent *goquery.Selection, url *nurl.URL) (Article, error) {
 	// Post process content
 	postProcessContent(articleContent, url)
 	images := extractImageURIs(articleContent, url)
@@ -1382,11 +1421,6 @@ func (extractor *Extractor) FromReader(reader io.Reader, url *nurl.URL) (Article
 	minTime, maxTime := estimateReadTime(articleContent)
 	metadata.MinReadTime = minTime
 	metadata.MaxReadTime = maxTime
-
-	// Update author data in metadata
-	if author != "" {
-		metadata.Author = author
-	}
 
 	// If we haven't found an excerpt in the article's metadata, use the first paragraph
 	if metadata.Excerpt == "" {
