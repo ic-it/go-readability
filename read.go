@@ -50,21 +50,21 @@ type readability struct {
 
 // Metadata is metadata of an article
 type Metadata struct {
-	Title       string
-	Image       string
-	Excerpt     string
-	Author      string
-	MinReadTime int
-	MaxReadTime int
+	Title       string `json:"title"`
+	Image       string `json:"image"`
+	Excerpt     string `json:"excerpt"`
+	Author      string `json:"author"`
+	MinReadTime int    `json:"min_read_time"`
+	MaxReadTime int    `json:"max_read_time"`
 }
 
 // Article is the content of an URL
 type Article struct {
-	URL    string
-	Meta   Metadata
-	Text   string
-	HTML   string
-	Images []string
+	URL    string   `json:"url"`
+	Meta   Metadata `json:"meta"`
+	Text   string   `json:"text"`
+	HTML   string   `json:"html"`
+	Images []string `json:"images"`
 }
 
 // removeScripts removes script tags from the document.
@@ -75,9 +75,12 @@ func removeScripts(doc *goquery.Document) {
 
 // replaceBrs replaces 2 or more successive <br> elements with a single <p>.
 // Whitespace between <br> elements are ignored. For example:
-//   <div>foo<br>bar<br> <br><br>abc</div>
+//
+//	<div>foo<br>bar<br> <br><br>abc</div>
+//
 // will become:
-//   <div>foo<br>bar<p>abc</p></div>
+//
+//	<div>foo<br>bar<p>abc</p></div>
 func replaceBrs(doc *goquery.Document) {
 	// Remove BRs in body
 	body := doc.Find("body")
