@@ -1139,6 +1139,13 @@ func NewNoobTextRenderers(lineBreak string) *TextRenderers {
 			render.WriteLineBreak(buf)
 		}, nil)
 
+	render.Register("p",
+		func(n *html.Node, buf *bytes.Buffer) {
+			render.WriteLineBreak(buf)
+		}, func(n *html.Node, buf *bytes.Buffer) {
+			render.WriteLineBreak(buf)
+		})
+
 	render.Register("h1",
 		func(n *html.Node, buf *bytes.Buffer) {
 			buf.WriteString("<h1>")
