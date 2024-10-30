@@ -1041,12 +1041,19 @@ func postProcessContent(articleContent *goquery.Selection, uri *nurl.URL) {
 
 // extractImageURIs export all image Absolute URIs
 func extractImageURIs(articleContent *goquery.Selection, base *nurl.URL) []string {
-	uris := make([]string, 0, 0)
+	uris := make([]string, 0)
 	articleContent.Find("img").Each(func(_ int, img *goquery.Selection) {
-		if src, exist := img.Attr("src"); exist {
-			absoluteURI := toAbsoluteURI(src, base)
-			img.SetAttr("src", absoluteURI)
-			uris = append(uris, absoluteURI)
+		imageSources := []string{
+			"src", "data-src", "srcset", "data-srcset", "data-original",
+			"data-original-src",
+		}
+		for _, source := range imageSources {
+			if src, exist := img.Attr(source); exist {
+				absoluteURI := toAbsoluteURI(src, base)
+				img.SetAttr(source, absoluteURI)
+				uris = append(uris, absoluteURI)
+				break
+			}
 		}
 	})
 
