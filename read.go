@@ -588,8 +588,8 @@ func cleanConditionally(e *goquery.Selection, tag string) {
 			haveToRemove := (!isList && li > p) ||
 				(img > 1 && float64(p)/float64(img) < 0.5 && !hasFigureAncestor) ||
 				(float64(input) > math.Floor(float64(p)/3)) ||
-				// (!isList && contentLength < 25 && (img == 0 || img > 2) && !hasFigureAncestor) ||
-				(!isList && contentLength < 25 && !hasFigureAncestor) || // Ignore many images
+				(!isList && contentLength < 25 && (img == 0 || img > 2) && !hasFigureAncestor) ||
+				// (!isList && contentLength < 25 && !hasFigureAncestor) || // Ignore many images
 				(!isList && weight < 25 && linkDensity > 0.2) ||
 				(weight >= 25 && linkDensity > 0.5) ||
 				((embedCount == 1 && contentLength < 75) || embedCount > 1)
