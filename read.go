@@ -1000,7 +1000,8 @@ func fixRelativeURIs(articleContent *goquery.Selection, base *nurl.URL) {
 	articleContent.Find("img").Each(func(_ int, img *goquery.Selection) {
 		if src, exist := img.Attr("src"); exist {
 			img.SetAttr("src", toAbsoluteURI(src, base))
-		} else if src, exist := img.Attr("data-src"); exist {
+		}
+		if src, exist := img.Attr("data-src"); exist {
 			img.SetAttr("src", toAbsoluteURI(src, base))
 		}
 	})
